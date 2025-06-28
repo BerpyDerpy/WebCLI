@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Web CLI</title>
+    <style>
+      body,
+      html {
+        height: 100%;
+        margin: 0;
+        background: black;
+        color: green;
+        font-family: monospace;
+      }
+      #terminal {
+        padding: 10px;
+        height: 100%;
+      }
+      .line {
+        display: flex;
+      }
+      .prompt {
+        margin-right: 5px;
+      }
+      input {
+        flex: 1;
+        background: none;
+        border: none;
+        outline: none;
+        color: inherit;
+        font-family: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="terminal"></div>
+    <script>
+      // in memory filesystem
+      function Node(name, type, parent = null) {
+        this.name = name;
+        this.type = type; // 'dir' or 'file'
+        this.parent = parent;
+        if (type === "dir") this.children = [];
+      }
+      const root = new Node("/", "dir");
+      let cwd = root;
+
+      //  write output
+      function print(text = "") {
+        const div = document.createElement("div");
+        div.textContent = text;
+        terminal.appendChild(div);
+        terminal.scrollTop = terminal.scrollHeight;
+      }
+
+      // Show prompt
+      function newPrompt() {
+        const line = document.createElement("div");
+        line.className = "line";
+        const prompt = document.createElement("span");
+        // build path
+        let path = "";
+        let node = cwd;
+        const parts = [];
+        while (node) {
+          parts.unshift(node.name);
+          node = node.parent;
+        }
+        path = parts.join("/") || "/";
+        prompt.textContent = path + " $";
+        prompt.className = "prompt";
+        const inp = document.createElement("input");
+        inp.autofocus = true;
+        inp.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            const cmd = inp.value.trim();
+            line.removeChild(inp);
+            print(path + " $ " + cmd);
+            runCommand(cmd);
+            newPrompt();
+          }
+        });
+        line.appendChild(prompt);
+        line.appendChild(inp);
+        terminal.appendChild(line);
+        inp.focus();
+      }
+
+      // Find child by name
+      function findChild(dir, name) {
+        return dir.children.find((c) => c.name === name);
+      }
+
+      // Deep copy node
+      function cloneNode(node, newParent) {
+        const copy = new Node(node.name, node.type, newParent);
+        if (node.type === "dir") {
+          node.children.forEach((child) => {
+            const c = cloneNode(child, copy);
+            copy.children.push(c);
+          });
+        }
+        return copy;
+      }
+
+      // Command handler
+      function runCommand(input) {
+        if (!input) return;
+        const [cmd, ...args] = input.split(" ");
+        switch (cmd) {
+          case "mkdir": {
+            const name = args[0];
+            if (!name) return print("Usage: mkdir <dirname>");
+            if (findChild(cwd, name)) return print("File exists");
+            cwd.children.push(new Node(name, "dir", cwd));
+            break;
+          }
+          case "ls": {
+            const names = cwd.children
+              .map((c) => c.name + (c.type === "dir" ? "/" : ""))
+              .join(" ");
+            print(names);
+            break;
+          }
+          case "cd": {
+            const target = args[0];
+            if (!target) return print("Usage: cd <dir>");
+            if (target === "..") {
+              if (cwd.parent) cwd = cwd.parent;
+            } else {
+              const child = findChild(cwd, target);
+              if (child && child.type === "dir") cwd = child;
+              else print("No such directory");
+            }
+            break;
+          }
+          case "rmdir": {
+            const name = args[0];
+            const child = findChild(cwd, name);
+            if (!child || child.type !== "dir")
+              return print("No such directory");
+            if (child.children.length) return print("Directory not empty");
+            cwd.children = cwd.children.filter((c) => c !== child);
+            break;
+          }
+          case "rm": {
+            const name = args[0];
+            const child = findChild(cwd, name);
+            if (!child) return print("No such file or directory");
+            if (child.type === "dir")
+              return print("Use rmdir to remove directories");
+            cwd.children = cwd.children.filter((c) => c !== child);
+            break;
+          }
+          case "touch": {
+            const name = args[0];
+            if (!name) return print("Usage: touch <filename>");
+            if (findChild(cwd, name)) return print("File exists");
+            cwd.children.push(new Node(name, "file", cwd));
+            break;
+          }
+          case "mv": {
+            const [oldName, newName] = args;
+            const child = findChild(cwd, oldName);
+            if (!child) return print("No such file or directory");
+            if (!newName) return print("Usage: mv <old> <new>");
+            child.name = newName;
+            break;
+          }
+          case "cp": {
+            const [src, dest] = args;
+            const child = findChild(cwd, src);
+            if (!child) return print("No such file or directory");
+            if (!dest) return print("Usage: cp <src> <dest>");
+            const copy = cloneNode(child, cwd);
+            copy.name = dest;
+            cwd.children.push(copy);
+            break;
+          }
+          case "curl": {
+            const url = args[0];
+            if (!url) return print("Usage: curl <url>");
+            // dummy response
+            print(JSON.stringify({ data: `Fetched from ${url}` }));
+            break;
+          }
+          default:
+            print("Command not recognized");
+        }
+      }
+
+      
+      const terminal = document.getElementById("terminal");
+      print("Web CLI");
+      newPrompt();
+    </script>
+  </body>
+</html>
